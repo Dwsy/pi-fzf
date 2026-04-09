@@ -1,6 +1,6 @@
 {
   "name": "pi-fff",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "@-prefixed file path autocomplete extension for pi powered by @ff-labs/fff-node",
   "type": "module",
   "files": [
