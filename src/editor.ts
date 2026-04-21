@@ -261,13 +261,15 @@ export class FffEditor extends CustomEditor {
 	}
 
 	override handleInput(data: string): void {
-		// Check if this is a printable character that should trigger autocomplete
-		if (data.charCodeAt(0) >= 32 && data.length === 1 && !this.isShowingAutocomplete()) {
+		const isPrintable = data.charCodeAt(0) >= 32 && data.length === 1;
+
+		// Check if we need to trigger autocomplete for @ or $ or #
+		if (isPrintable && !this.isShowingAutocomplete()) {
 			const currentLine = this.getLines()[this.getCursor().line] ?? "";
 			const cursorCol = this.getCursor().col;
 			const textBeforeCursor = currentLine.slice(0, cursorCol);
 
-			// Auto-trigger for @ at token boundaries (if enabled)
+			// Trigger for @ at token boundaries
 			if (data === "@" && isFeatureEnabled("atAutocomplete")) {
 				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
 				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
@@ -277,7 +279,7 @@ export class FffEditor extends CustomEditor {
 				}
 			}
 
-			// Auto-trigger for $ or # at token boundaries (if enabled)
+			// Trigger for $ or # at token boundaries
 			if ((data === "$" || data === "#") && isFeatureEnabled("commandAutocomplete")) {
 				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
 				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
@@ -286,26 +288,32 @@ export class FffEditor extends CustomEditor {
 					return;
 				}
 			}
+		}
 
-			// Continue typing in @ context (if enabled)
-			if (isFeatureEnabled("atAutocomplete") && /[a-zA-Z0-9.\-_]/.test(data)) {
-				if (textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/)) {
-					super.handleInput(data);
+		// Insert the character first
+		super.handleInput(data);
+
+		// Check if autocomplete should be triggered/updated after typing
+		if (isPrintable && this.isShowingAutocomplete()) {
+			const currentLine = this.getLines()[this.getCursor().line] ?? "";
+			const cursorCol = this.getCursor().col;
+			const textBeforeCursor = currentLine.slice(0, cursorCol);
+
+			// Check if we're in @ context
+			if (isFeatureEnabled("atAutocomplete") && /[a-zA-Z0-9.\-_#\/\\:]/.test(data)) {
+				if (textBeforeCursor.includes("@") && !textBeforeCursor.includes(" ")) {
+					// Refresh autocomplete
 					super.handleInput("\t");
-					return;
 				}
 			}
 
-			// Continue typing in $ or # context (if enabled)
+			// Check if we're in $ or # context
 			if (isFeatureEnabled("commandAutocomplete") && /[a-zA-Z0-9.\-_]/.test(data)) {
-				if (textBeforeCursor.match(/(?:^|[\s])[$#][^\s]*$/)) {
-					super.handleInput(data);
+				if (textBeforeCursor.startsWith("$") || textBeforeCursor.startsWith("#")) {
+					// Refresh autocomplete
 					super.handleInput("\t");
-					return;
 				}
 			}
 		}
-
-		super.handleInput(data);
 	}
 }
