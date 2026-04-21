@@ -4,6 +4,7 @@ import { fuzzyFilter } from "@mariozechner/pi-tui";
 import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, TUI } from "@mariozechner/pi-tui";
 import type { EditorTheme } from "@mariozechner/pi-tui";
 import type { FffRuntime } from "./fff-runtime.ts";
+import { isFeatureEnabled } from "./config.ts";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
 const MAX_FILE_RESULTS = 20;
@@ -169,8 +170,10 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 	): Promise<AutocompleteSuggestions | null> {
 		const currentLine = lines[cursorLine] ?? "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
+
+		// Handle @ prefix - file autocomplete
 		const atPrefix = extractAtPrefix(textBeforeCursor);
-		if (atPrefix) {
+		if (atPrefix && isFeatureEnabled("atAutocomplete")) {
 			if (options.signal.aborted) return null;
 
 			const { rawQuery, isQuotedPrefix } = parseAtPrefix(atPrefix);
@@ -197,8 +200,9 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 			}
 		}
 
+		// Handle #/$ prefix - command autocomplete
 		const cmdPrefix = extractCommandPrefix(textBeforeCursor);
-		if (cmdPrefix) {
+		if (cmdPrefix && isFeatureEnabled("commandAutocomplete")) {
 			const query = cmdPrefix.slice(1);
 			const items = buildCommandSuggestions(toPromptOrSkillCommands(this.getCommands()), query);
 			if (items.length > 0) {
@@ -222,7 +226,9 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 		if (prefix.startsWith("$") || prefix.startsWith("#")) {
 			return applyCommandCompletion(lines, cursorLine, cursorCol, item, prefix);
 		}
-		void this.runtime.trackQuery(prefix, normalizeInsertedPath(item.value));
+		if (prefix.startsWith("@")) {
+			void this.runtime.trackQuery(prefix, normalizeInsertedPath(item.value));
+		}
 		return this.baseProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
 	}
 
@@ -255,14 +261,14 @@ export class FffEditor extends CustomEditor {
 	}
 
 	override handleInput(data: string): void {
-		// Check if this is a printable character that should trigger command autocomplete
+		// Check if this is a printable character that should trigger autocomplete
 		if (data.charCodeAt(0) >= 32 && data.length === 1 && !this.isShowingAutocomplete()) {
 			const currentLine = this.getLines()[this.getCursor().line] ?? "";
 			const cursorCol = this.getCursor().col;
 			const textBeforeCursor = currentLine.slice(0, cursorCol);
 
-			// Auto-trigger for "$" or "#" at token boundaries
-			if (data === "$" || data === "#") {
+			// Auto-trigger for @ at token boundaries (if enabled)
+			if (data === "@" && isFeatureEnabled("atAutocomplete")) {
 				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
 				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
 					super.handleInput(data);
@@ -270,8 +276,28 @@ export class FffEditor extends CustomEditor {
 					return;
 				}
 			}
-			// Continue typing in $ or # context
-			else if (/[a-zA-Z0-9.\-_]/.test(data)) {
+
+			// Auto-trigger for $ or # at token boundaries (if enabled)
+			if ((data === "$" || data === "#") && isFeatureEnabled("commandAutocomplete")) {
+				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
+				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
+					super.handleInput(data);
+					super.handleInput("\t");
+					return;
+				}
+			}
+
+			// Continue typing in @ context (if enabled)
+			if (isFeatureEnabled("atAutocomplete") && /[a-zA-Z0-9.\-_]/.test(data)) {
+				if (textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/)) {
+					super.handleInput(data);
+					super.handleInput("\t");
+					return;
+				}
+			}
+
+			// Continue typing in $ or # context (if enabled)
+			if (isFeatureEnabled("commandAutocomplete") && /[a-zA-Z0-9.\-_]/.test(data)) {
 				if (textBeforeCursor.match(/(?:^|[\s])[$#][^\s]*$/)) {
 					super.handleInput(data);
 					super.handleInput("\t");
