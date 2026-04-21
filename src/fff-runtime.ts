@@ -205,6 +205,14 @@ export class FffRuntime {
 		this.isReady = true;
 	}
 
+	async warm(timeoutMs = 1500): Promise<void> {
+		try {
+			await this.ensure();
+		} catch {
+			// Ignore warm errors
+		}
+	}
+
 	async reindex(): Promise<void> {
 		this.fileCache = [];
 		this.fileCacheTime = 0;

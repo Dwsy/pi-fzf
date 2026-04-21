@@ -25,6 +25,9 @@ export default function (pi: ExtensionAPI) {
 		if (isFeatureEnabled("atAutocomplete") || isFeatureEnabled("commandAutocomplete")) {
 			ctx.ui.setEditorComponent((tui, theme, keybindings) => new FffEditor(tui, theme, keybindings, runtime!, () => pi.getCommands()));
 		}
+
+		// Warm up the runtime
+		void runtime.warm();
 	});
 
 	pi.on("session_shutdown", async () => {

@@ -261,12 +261,21 @@ export class FffEditor extends CustomEditor {
 	}
 
 	override handleInput(data: string): void {
-		// Only handle $ and # autocomplete trigger in handleInput
-		// @ autocomplete is handled automatically by the base editor via getSuggestions
+		// Handle autocomplete triggers for @, $, #
 		if (data.charCodeAt(0) >= 32 && data.length === 1 && !this.isShowingAutocomplete()) {
 			const currentLine = this.getLines()[this.getCursor().line] ?? "";
 			const cursorCol = this.getCursor().col;
 			const textBeforeCursor = currentLine.slice(0, cursorCol);
+
+			// Auto-trigger for @ at token boundaries
+			if (data === "@" && isFeatureEnabled("atAutocomplete")) {
+				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
+				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
+					super.handleInput(data);
+					super.handleInput("\t");
+					return;
+				}
+			}
 
 			// Auto-trigger for $ or # at token boundaries
 			if ((data === "$" || data === "#") && isFeatureEnabled("commandAutocomplete")) {
