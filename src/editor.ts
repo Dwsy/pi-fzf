@@ -57,7 +57,7 @@ function extractAtPrefix(text: string): string | null {
 	return null;
 }
 
-export function extractCommandPrefix(text: string): string | null {
+function extractCommandPrefix(text: string): string | null {
 	// Check for quoted $ or # prefix
 	const quoteStart = findUnclosedQuoteStart(text);
 	if (quoteStart !== null && quoteStart > 0) {
@@ -261,25 +261,14 @@ export class FffEditor extends CustomEditor {
 	}
 
 	override handleInput(data: string): void {
-		const isPrintable = data.charCodeAt(0) >= 32 && data.length === 1;
-
-		// Check if we need to trigger autocomplete for @ or $ or #
-		if (isPrintable && !this.isShowingAutocomplete()) {
+		// Only handle $ and # autocomplete trigger in handleInput
+		// @ autocomplete is handled automatically by the base editor via getSuggestions
+		if (data.charCodeAt(0) >= 32 && data.length === 1 && !this.isShowingAutocomplete()) {
 			const currentLine = this.getLines()[this.getCursor().line] ?? "";
 			const cursorCol = this.getCursor().col;
 			const textBeforeCursor = currentLine.slice(0, cursorCol);
 
-			// Trigger for @ at token boundaries
-			if (data === "@" && isFeatureEnabled("atAutocomplete")) {
-				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
-				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
-					super.handleInput(data);
-					super.handleInput("\t");
-					return;
-				}
-			}
-
-			// Trigger for $ or # at token boundaries
+			// Auto-trigger for $ or # at token boundaries
 			if ((data === "$" || data === "#") && isFeatureEnabled("commandAutocomplete")) {
 				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
 				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
@@ -290,30 +279,7 @@ export class FffEditor extends CustomEditor {
 			}
 		}
 
-		// Insert the character first
+		// Fall through to parent handling
 		super.handleInput(data);
-
-		// Check if autocomplete should be triggered/updated after typing
-		if (isPrintable && this.isShowingAutocomplete()) {
-			const currentLine = this.getLines()[this.getCursor().line] ?? "";
-			const cursorCol = this.getCursor().col;
-			const textBeforeCursor = currentLine.slice(0, cursorCol);
-
-			// Check if we're in @ context
-			if (isFeatureEnabled("atAutocomplete") && /[a-zA-Z0-9.\-_#\/\\:]/.test(data)) {
-				if (textBeforeCursor.includes("@") && !textBeforeCursor.includes(" ")) {
-					// Refresh autocomplete
-					super.handleInput("\t");
-				}
-			}
-
-			// Check if we're in $ or # context
-			if (isFeatureEnabled("commandAutocomplete") && /[a-zA-Z0-9.\-_]/.test(data)) {
-				if (textBeforeCursor.startsWith("$") || textBeforeCursor.startsWith("#")) {
-					// Refresh autocomplete
-					super.handleInput("\t");
-				}
-			}
-		}
 	}
 }
