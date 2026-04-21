@@ -3,7 +3,7 @@ import { CustomEditor } from "@mariozechner/pi-coding-agent";
 import { fuzzyFilter } from "@mariozechner/pi-tui";
 import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, TUI } from "@mariozechner/pi-tui";
 import type { EditorTheme } from "@mariozechner/pi-tui";
-import type { FffRuntime } from "./fff.ts";
+import type { FffRuntime } from "./fff-runtime.ts";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
 const MAX_FILE_RESULTS = 20;
@@ -13,12 +13,6 @@ type CommandEntry = {
 	name: string;
 	description?: string;
 	source: "extension" | "prompt" | "skill";
-};
-
-export type PromptOrSkillCommand = {
-	name: string;
-	description?: string;
-	source: "prompt" | "skill";
 };
 
 function findLastDelimiter(text: string): number {
@@ -56,18 +50,6 @@ function extractAtPrefix(text: string): string | null {
 	return null;
 }
 
-export function extractDollarPrefix(text: string): string | null {
-	const quoteStart = findUnclosedQuoteStart(text);
-	if (quoteStart !== null && quoteStart > 0 && text[quoteStart - 1] === "$" && isTokenStart(text, quoteStart - 1)) {
-		return text.slice(quoteStart - 1);
-	}
-
-	const lastDelimiterIndex = findLastDelimiter(text);
-	const tokenStart = lastDelimiterIndex === -1 ? 0 : lastDelimiterIndex + 1;
-	if (text[tokenStart] === "$") return text.slice(tokenStart);
-	return null;
-}
-
 function parseAtPrefix(prefix: string): { rawQuery: string; isQuotedPrefix: boolean } {
 	if (prefix.startsWith('@"')) return { rawQuery: prefix.slice(2), isQuotedPrefix: true };
 	return { rawQuery: prefix.slice(1), isQuotedPrefix: false };
@@ -92,53 +74,23 @@ function toFileSuggestion(relativePath: string, label: string, description: stri
 	};
 }
 
-function toPromptOrSkillCommands(commands: CommandEntry[]): PromptOrSkillCommand[] {
-	return commands.filter((command): command is PromptOrSkillCommand => command.source === "prompt" || command.source === "skill");
+function toPromptOrSkillCommands(commands: CommandEntry[]): CommandEntry[] {
+	return commands.filter((c) => c.source === "prompt" || c.source === "skill");
 }
 
-function getCommandSearchText(command: PromptOrSkillCommand): string {
+function getCommandSearchText(command: CommandEntry): string {
 	const bareName = command.source === "skill" ? command.name.replace(/^skill:/, "") : command.name;
 	return `${bareName} ${command.name} ${command.source} ${command.description ?? ""}`.trim();
 }
 
-function getCommandLabel(command: PromptOrSkillCommand): string {
-	return `/${command.name}`;
-}
-
-function getCommandDescription(command: PromptOrSkillCommand): string {
-	const kind = command.source === "skill" ? "skill" : "prompt";
-	return command.description ? `${kind} · ${command.description}` : kind;
-}
-
-export function buildDollarSuggestions(commands: PromptOrSkillCommand[], query: string): AutocompleteItem[] {
+export function buildDollarSuggestions(commands: CommandEntry[], query: string): AutocompleteItem[] {
 	return fuzzyFilter(commands, query, getCommandSearchText)
 		.slice(0, MAX_COMMAND_RESULTS)
 		.map((command) => ({
 			value: `/${command.name}`,
-			label: getCommandLabel(command),
-			description: getCommandDescription(command),
+			label: `/${command.name}`,
+			description: command.description ?? "",
 		}));
-}
-
-export function applyDollarCompletion(
-	lines: string[],
-	cursorLine: number,
-	cursorCol: number,
-	item: AutocompleteItem,
-	prefix: string,
-): { lines: string[]; cursorLine: number; cursorCol: number } {
-	const currentLine = lines[cursorLine] ?? "";
-	const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
-	const afterCursor = currentLine.slice(cursorCol);
-	const suffix = afterCursor.startsWith(" ") ? "" : " ";
-	const newLine = `${beforePrefix}${item.value}${suffix}${afterCursor}`;
-	const nextLines = [...lines];
-	nextLines[cursorLine] = newLine;
-	return {
-		lines: nextLines,
-		cursorLine,
-		cursorCol: beforePrefix.length + item.value.length + suffix.length,
-	};
 }
 
 class FffAutocompleteProvider implements AutocompleteProvider {
@@ -161,38 +113,30 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 		const currentLine = lines[cursorLine] ?? "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
 		const atPrefix = extractAtPrefix(textBeforeCursor);
+		
 		if (atPrefix) {
 			if (options.signal.aborted) return null;
 
 			const { rawQuery, isQuotedPrefix } = parseAtPrefix(atPrefix);
-			const candidatesResult = await this.runtime.searchFileCandidates(rawQuery, MAX_FILE_RESULTS);
-			if (options.signal.aborted || candidatesResult.isErr() || candidatesResult.value.length === 0) {
-				return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
-			}
+			try {
+				const candidates = await this.runtime.searchFileCandidates(rawQuery, MAX_FILE_RESULTS);
+				if (options.signal.aborted || candidates.length === 0) {
+					return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
+				}
 
-			return {
-				prefix: atPrefix,
-				items: candidatesResult.value.map((candidate) => {
-					const matchType = candidate.score?.matchType ? ` · ${candidate.score.matchType}` : "";
-					return toFileSuggestion(
-						candidate.item.relativePath,
-						candidate.item.fileName || candidate.item.relativePath,
-						`${candidate.item.relativePath}${matchType}`,
-						isQuotedPrefix,
-					);
-				}),
-			};
-		}
-
-		const dollarPrefix = extractDollarPrefix(textBeforeCursor);
-		if (dollarPrefix) {
-			const query = dollarPrefix.slice(1);
-			const items = buildDollarSuggestions(toPromptOrSkillCommands(this.getCommands()), query);
-			if (items.length > 0) {
 				return {
-					prefix: dollarPrefix,
-					items,
+					prefix: atPrefix,
+					items: candidates.map((candidate) =>
+						toFileSuggestion(
+							candidate.item.relativePath,
+							candidate.item.fileName || candidate.item.relativePath,
+							candidate.item.relativePath,
+							isQuotedPrefix,
+						)
+					),
 				};
+			} catch {
+				return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
 			}
 		}
 
@@ -206,9 +150,6 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 		item: AutocompleteItem,
 		prefix: string,
 	): { lines: string[]; cursorLine: number; cursorCol: number } {
-		if (prefix.startsWith("$")) {
-			return applyDollarCompletion(lines, cursorLine, cursorCol, item, prefix);
-		}
 		void this.runtime.trackQuery(prefix, normalizeInsertedPath(item.value));
 		return this.baseProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
 	}
@@ -239,39 +180,5 @@ export class FffEditor extends CustomEditor {
 
 	override setAutocompleteProvider(provider: AutocompleteProvider): void {
 		super.setAutocompleteProvider(new FffAutocompleteProvider(provider, this.runtime, this.getCommands));
-	}
-
-	override handleInput(data: string): void {
-		// Check if this is a printable character that should trigger $ autocomplete
-		if (data.charCodeAt(0) >= 32 && data.length === 1 && !this.isShowingAutocomplete()) {
-			const currentLine = this.getLines()[this.getCursor().line] ?? "";
-			const cursorCol = this.getCursor().col;
-			const textBeforeCursor = currentLine.slice(0, cursorCol);
-
-			// Auto-trigger for "$" at token boundaries
-			if (data === "$") {
-				const charBeforeDollar = textBeforeCursor[textBeforeCursor.length - 1];
-				if (textBeforeCursor.length === 0 || charBeforeDollar === " " || charBeforeDollar === "\t") {
-					// Insert the $ character first
-					super.handleInput(data);
-					// Then trigger autocomplete using Tab key to invoke the parent's autocomplete flow
-					super.handleInput("\t");
-					return;
-				}
-			}
-			// Continue typing in $ context - check if we're in a $... context
-			else if (/[a-zA-Z0-9.\-_]/.test(data)) {
-				if (textBeforeCursor.match(/(?:^|[\s])\$[^\s]*$/)) {
-					// Insert the character first
-					super.handleInput(data);
-					// Then trigger autocomplete update using Tab key
-					super.handleInput("\t");
-					return;
-				}
-			}
-		}
-
-		// Fall through to parent handling
-		super.handleInput(data);
 	}
 }
