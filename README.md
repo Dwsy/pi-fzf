@@ -13,6 +13,7 @@ When working in a real codebase, agents and humans rarely know the exact path th
 Instead of requiring exact file paths or repeated shell exploration, `pi-fff` lets pi:
 
 - autocomplete fuzzy `@...` file references in the editor
+- autocomplete `$...` prompt and skill shortcuts into slash commands
 - resolve approximate paths before `read`
 - search code content with FFF-backed `grep`
 - expose dedicated search tools for agents
@@ -32,9 +33,14 @@ Type things like:
 @readme
 @src/index
 @"folder with spaces/file"
+$handoff
+$writing
 ```
 
-`pi-fff` will offer ranked file suggestions from the current project.
+`pi-fff` will offer ranked file suggestions for `@...`, and fuzzy prompt/skill suggestions for `$...` that insert the corresponding slash command:
+
+- `$handoff` → `/handoff`
+- `$writing` → `/skill:writing-plans`
 
 ### 2. Built-in tool upgrades
 
@@ -198,7 +204,7 @@ npm test
 
 ## Summary
 
-`pi-fff` makes pi better at file discovery, fuzzy path resolution, and indexed code search.
+`pi-fff` makes pi better at file discovery, prompt/skill command discovery, fuzzy path resolution, and indexed code search.
 
 If pi is active inside a repo, `pi-fff` helps both the editor and the agent get to the right file faster.
 

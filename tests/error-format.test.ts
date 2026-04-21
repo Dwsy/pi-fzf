@@ -9,7 +9,6 @@ test("formatPathResolutionError renders ambiguous candidate list", () => {
 		candidates: [
 			{
 				item: {
-					path: "/repo/src/editor.ts",
 					relativePath: "src/editor.ts",
 					fileName: "editor.ts",
 					size: 1,
@@ -23,7 +22,6 @@ test("formatPathResolutionError renders ambiguous candidate list", () => {
 			},
 			{
 				item: {
-					path: "/repo/src/editor-utils.ts",
 					relativePath: "src/editor-utils.ts",
 					fileName: "editor-utils.ts",
 					size: 1,

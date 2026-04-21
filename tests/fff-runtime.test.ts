@@ -13,7 +13,6 @@ function ok<T>(value: T): Result<T> {
 function makeMatch(relativePath: string, lineNumber: number, text: string): GrepMatch {
 	const matchStart = Math.max(0, text.indexOf("needle"));
 	return {
-		path: `/repo/${relativePath}`,
 		relativePath,
 		fileName: relativePath.split("/").pop() ?? relativePath,
 		gitStatus: "clean",
@@ -95,11 +94,11 @@ test("findFiles retries 3+ word empty queries with first two words and preserves
 			if (query === "alpha beta") {
 				const items = pageIndex === 0
 					? [
-						{ path: "/repo/src/a.ts", relativePath: "src/a.ts", fileName: "a.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
-						{ path: "/repo/src/b.ts", relativePath: "src/b.ts", fileName: "b.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+						{ relativePath: "src/a.ts", fileName: "a.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+						{ relativePath: "src/b.ts", fileName: "b.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
 					]
 					: [
-						{ path: "/repo/src/c.ts", relativePath: "src/c.ts", fileName: "c.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+						{ relativePath: "src/c.ts", fileName: "c.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
 					];
 				return ok({
 					items,
@@ -136,11 +135,11 @@ test("findFiles returns paginated cursor and continues on next page", async () =
 			const pageIndex = options?.pageIndex ?? 0;
 			const items = pageIndex === 0
 				? [
-					{ path: "/repo/src/a.ts", relativePath: "src/a.ts", fileName: "a.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
-					{ path: "/repo/src/b.ts", relativePath: "src/b.ts", fileName: "b.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+					{ relativePath: "src/a.ts", fileName: "a.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+					{ relativePath: "src/b.ts", fileName: "b.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
 				]
 				: [
-					{ path: "/repo/src/c.ts", relativePath: "src/c.ts", fileName: "c.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+					{ relativePath: "src/c.ts", fileName: "c.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
 				];
 			return ok({
 				items,
@@ -204,8 +203,8 @@ test("resolvePath uses MCP-style best-match heuristic", async () => {
 	const finder = createMockFinder({
 		fileSearch(query): Result<SearchResult> {
 			const items = [
-				{ path: "/repo/src/a.ts", relativePath: "src/a.ts", fileName: "a.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
-				{ path: "/repo/src/b.ts", relativePath: "src/b.ts", fileName: "b.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+				{ relativePath: "src/a.ts", fileName: "a.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
+				{ relativePath: "src/b.ts", fileName: "b.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 0, gitStatus: "clean" },
 			];
 			const scores = query === "clear"
 				? [
@@ -370,7 +369,7 @@ test("grepSearch suggests a relevant file path when content search is empty", as
 		fileSearch(query): Result<SearchResult> {
 			assert.equal(query, "src/components/button.ts");
 			const items = [
-				{ path: "/repo/src/components/button.ts", relativePath: "src/components/button.ts", fileName: "button.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 200, gitStatus: "modified" },
+				{ relativePath: "src/components/button.ts", fileName: "button.ts", size: 1, modified: 0, accessFrecencyScore: 0, modificationFrecencyScore: 0, totalFrecencyScore: 200, gitStatus: "modified" },
 			];
 			return ok({
 				items,

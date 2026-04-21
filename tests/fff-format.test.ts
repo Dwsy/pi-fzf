@@ -5,7 +5,6 @@ import { buildGrepText, cropMatchLine, formatCandidateLines } from "../src/fff.t
 
 function makeMatch(overrides: Partial<GrepMatch> = {}): GrepMatch {
 	return {
-		path: "/repo/src/example.ts",
 		relativePath: "src/example.ts",
 		fileName: "example.ts",
 		gitStatus: "clean",
@@ -41,7 +40,6 @@ test("formatCandidateLines adds frecency and git suffixes", () => {
 	const lines = formatCandidateLines([
 		{
 			item: {
-				path: "/repo/src/example.ts",
 				relativePath: "src/example.ts",
 				fileName: "example.ts",
 				size: 64,
@@ -94,7 +92,6 @@ test("buildGrepText supports files_with_matches output mode", () => {
 	});
 	const other = makeMatch({
 		relativePath: "src/other.ts",
-		path: "/repo/src/other.ts",
 		fileName: "other.ts",
 		lineNumber: 5,
 		lineContent: "const needle = performSearch();",
@@ -119,7 +116,6 @@ test("buildGrepText supports count output mode", () => {
 	const second = makeMatch({ lineNumber: 2, lineContent: "needle two" });
 	const third = makeMatch({
 		relativePath: "src/other.ts",
-		path: "/repo/src/other.ts",
 		fileName: "other.ts",
 		lineNumber: 3,
 		lineContent: "needle three",
@@ -140,7 +136,6 @@ test("buildGrepText supports usage output mode", () => {
 	const first = makeMatch({ lineNumber: 10, lineContent: "const one = needle();" });
 	const second = makeMatch({
 		relativePath: "src/other.ts",
-		path: "/repo/src/other.ts",
 		fileName: "other.ts",
 		lineNumber: 3,
 		lineContent: "const two = needle();",

@@ -32,7 +32,7 @@ export default function (pi: ExtensionAPI) {
 
 	const applyUiConfiguration = (ctx: ExtensionContext) => {
 		if (isFeatureEnabled("autocomplete") && runtime) {
-			ctx.ui.setEditorComponent((tui, theme, keybindings) => new FffEditor(tui, theme, keybindings, runtime!));
+			ctx.ui.setEditorComponent((tui, theme, keybindings) => new FffEditor(tui, theme, keybindings, runtime!, () => pi.getCommands()));
 		}
 
 		syncCustomToolActivation();
