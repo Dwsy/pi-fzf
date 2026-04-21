@@ -56,15 +56,24 @@ function extractAtPrefix(text: string): string | null {
 	return null;
 }
 
-export function extractDollarPrefix(text: string): string | null {
+export function extractCommandPrefix(text: string): string | null {
+	// Check for quoted $ or # prefix
 	const quoteStart = findUnclosedQuoteStart(text);
-	if (quoteStart !== null && quoteStart > 0 && text[quoteStart - 1] === "$" && isTokenStart(text, quoteStart - 1)) {
-		return text.slice(quoteStart - 1);
+	if (quoteStart !== null && quoteStart > 0) {
+		const charBeforeQuote = text[quoteStart - 1];
+		if ((charBeforeQuote === "$" || charBeforeQuote === "#") && isTokenStart(text, quoteStart - 1)) {
+			return text.slice(quoteStart - 1);
+		}
 	}
 
 	const lastDelimiterIndex = findLastDelimiter(text);
 	const tokenStart = lastDelimiterIndex === -1 ? 0 : lastDelimiterIndex + 1;
-	if (text[tokenStart] === "$") return text.slice(tokenStart);
+	const token = text.slice(tokenStart);
+
+	if (token.startsWith("$") || token.startsWith("#")) {
+		return token;
+	}
+
 	return null;
 }
 
@@ -110,7 +119,7 @@ function getCommandDescription(command: PromptOrSkillCommand): string {
 	return command.description ? `${kind} · ${command.description}` : kind;
 }
 
-export function buildDollarSuggestions(commands: PromptOrSkillCommand[], query: string): AutocompleteItem[] {
+export function buildCommandSuggestions(commands: PromptOrSkillCommand[], query: string): AutocompleteItem[] {
 	return fuzzyFilter(commands, query, getCommandSearchText)
 		.slice(0, MAX_COMMAND_RESULTS)
 		.map((command) => ({
@@ -120,7 +129,7 @@ export function buildDollarSuggestions(commands: PromptOrSkillCommand[], query: 
 		}));
 }
 
-export function applyDollarCompletion(
+export function applyCommandCompletion(
 	lines: string[],
 	cursorLine: number,
 	cursorCol: number,
@@ -188,13 +197,13 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 			}
 		}
 
-		const dollarPrefix = extractDollarPrefix(textBeforeCursor);
-		if (dollarPrefix) {
-			const query = dollarPrefix.slice(1);
-			const items = buildDollarSuggestions(toPromptOrSkillCommands(this.getCommands()), query);
+		const cmdPrefix = extractCommandPrefix(textBeforeCursor);
+		if (cmdPrefix) {
+			const query = cmdPrefix.slice(1);
+			const items = buildCommandSuggestions(toPromptOrSkillCommands(this.getCommands()), query);
 			if (items.length > 0) {
 				return {
-					prefix: dollarPrefix,
+					prefix: cmdPrefix,
 					items,
 				};
 			}
@@ -210,8 +219,8 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 		item: AutocompleteItem,
 		prefix: string,
 	): { lines: string[]; cursorLine: number; cursorCol: number } {
-		if (prefix.startsWith("$")) {
-			return applyDollarCompletion(lines, cursorLine, cursorCol, item, prefix);
+		if (prefix.startsWith("$") || prefix.startsWith("#")) {
+			return applyCommandCompletion(lines, cursorLine, cursorCol, item, prefix);
 		}
 		void this.runtime.trackQuery(prefix, normalizeInsertedPath(item.value));
 		return this.baseProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
@@ -246,36 +255,31 @@ export class FffEditor extends CustomEditor {
 	}
 
 	override handleInput(data: string): void {
-		// Check if this is a printable character that should trigger $ autocomplete
+		// Check if this is a printable character that should trigger command autocomplete
 		if (data.charCodeAt(0) >= 32 && data.length === 1 && !this.isShowingAutocomplete()) {
 			const currentLine = this.getLines()[this.getCursor().line] ?? "";
 			const cursorCol = this.getCursor().col;
 			const textBeforeCursor = currentLine.slice(0, cursorCol);
 
-			// Auto-trigger for "$" at token boundaries
-			if (data === "$") {
-				const charBeforeDollar = textBeforeCursor[textBeforeCursor.length - 1];
-				if (textBeforeCursor.length === 0 || charBeforeDollar === " " || charBeforeDollar === "\t") {
-					// Insert the $ character first
+			// Auto-trigger for "$" or "#" at token boundaries
+			if (data === "$" || data === "#") {
+				const charBefore = textBeforeCursor[textBeforeCursor.length - 1];
+				if (textBeforeCursor.length === 0 || charBefore === " " || charBefore === "\t") {
 					super.handleInput(data);
-					// Then trigger autocomplete using Tab key to invoke the parent's autocomplete flow
 					super.handleInput("\t");
 					return;
 				}
 			}
-			// Continue typing in $ context - check if we're in a $... context
+			// Continue typing in $ or # context
 			else if (/[a-zA-Z0-9.\-_]/.test(data)) {
-				if (textBeforeCursor.match(/(?:^|[\s])\$[^\s]*$/)) {
-					// Insert the character first
+				if (textBeforeCursor.match(/(?:^|[\s])[$#][^\s]*$/)) {
 					super.handleInput(data);
-					// Then trigger autocomplete update using Tab key
 					super.handleInput("\t");
 					return;
 				}
 			}
 		}
 
-		// Fall through to parent handling
 		super.handleInput(data);
 	}
 }
