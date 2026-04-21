@@ -38,21 +38,28 @@ function findUnclosedQuoteStart(text: string): number | null {
 	return inQuotes ? quoteStart : null;
 }
 
-function extractAtPrefix(text: string): string | null {
+function extractPrefix(text: string): { type: "@" | "$" | null; rawQuery: string; isQuotedPrefix: boolean } {
+	// Check for @ prefix
 	const quoteStart = findUnclosedQuoteStart(text);
 	if (quoteStart !== null && quoteStart > 0 && text[quoteStart - 1] === "@" && isTokenStart(text, quoteStart - 1)) {
-		return text.slice(quoteStart - 1);
+		return { type: "@", rawQuery: text.slice(quoteStart - 1), isQuotedPrefix: true };
 	}
 
 	const lastDelimiterIndex = findLastDelimiter(text);
 	const tokenStart = lastDelimiterIndex === -1 ? 0 : lastDelimiterIndex + 1;
-	if (text[tokenStart] === "@") return text.slice(tokenStart);
-	return null;
-}
+	const token = text.slice(tokenStart);
 
-function parseAtPrefix(prefix: string): { rawQuery: string; isQuotedPrefix: boolean } {
-	if (prefix.startsWith('@"')) return { rawQuery: prefix.slice(2), isQuotedPrefix: true };
-	return { rawQuery: prefix.slice(1), isQuotedPrefix: false };
+	// Check for @ prefix (without quotes)
+	if (token.startsWith("@") && !token.startsWith("@\"")) {
+		return { type: "@", rawQuery: token, isQuotedPrefix: false };
+	}
+
+	// Check for $ prefix
+	if (token.startsWith("$")) {
+		return { type: "$", rawQuery: token.slice(1), isQuotedPrefix: false };
+	}
+
+	return { type: null, rawQuery: "", isQuotedPrefix: false };
 }
 
 function normalizeInsertedPath(value: string): string {
@@ -64,9 +71,9 @@ function normalizeInsertedPath(value: string): string {
 	return normalized;
 }
 
-function toFileSuggestion(relativePath: string, label: string, description: string, isQuotedPrefix: boolean): AutocompleteItem {
+function toFileSuggestion(relativePath: string, label: string, description: string): AutocompleteItem {
 	const path = relativePath.replace(/\\/g, "/");
-	const needsQuotes = isQuotedPrefix || path.includes(" ");
+	const needsQuotes = path.includes(" ");
 	return {
 		value: needsQuotes ? `@"${path}"` : `@${path}`,
 		label,
@@ -74,16 +81,12 @@ function toFileSuggestion(relativePath: string, label: string, description: stri
 	};
 }
 
-function toPromptOrSkillCommands(commands: CommandEntry[]): CommandEntry[] {
-	return commands.filter((c) => c.source === "prompt" || c.source === "skill");
-}
-
 function getCommandSearchText(command: CommandEntry): string {
 	const bareName = command.source === "skill" ? command.name.replace(/^skill:/, "") : command.name;
 	return `${bareName} ${command.name} ${command.source} ${command.description ?? ""}`.trim();
 }
 
-export function buildDollarSuggestions(commands: CommandEntry[], query: string): AutocompleteItem[] {
+function buildCommandSuggestions(commands: CommandEntry[], query: string): AutocompleteItem[] {
 	return fuzzyFilter(commands, query, getCommandSearchText)
 		.slice(0, MAX_COMMAND_RESULTS)
 		.map((command) => ({
@@ -112,32 +115,51 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 	): Promise<AutocompleteSuggestions | null> {
 		const currentLine = lines[cursorLine] ?? "";
 		const textBeforeCursor = currentLine.slice(0, cursorCol);
-		const atPrefix = extractAtPrefix(textBeforeCursor);
-		
-		if (atPrefix) {
+		const { type, rawQuery, isQuotedPrefix } = extractPrefix(textBeforeCursor);
+
+		// Handle @ prefix - file autocomplete
+		if (type === "@") {
 			if (options.signal.aborted) return null;
 
-			const { rawQuery, isQuotedPrefix } = parseAtPrefix(atPrefix);
 			try {
-				const candidates = await this.runtime.searchFileCandidates(rawQuery, MAX_FILE_RESULTS);
+				const candidates = await this.runtime.searchFileCandidates(rawQuery.slice(1), MAX_FILE_RESULTS);
 				if (options.signal.aborted || candidates.length === 0) {
 					return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
 				}
 
 				return {
-					prefix: atPrefix,
+					prefix: rawQuery,
 					items: candidates.map((candidate) =>
 						toFileSuggestion(
 							candidate.item.relativePath,
 							candidate.item.fileName || candidate.item.relativePath,
 							candidate.item.relativePath,
-							isQuotedPrefix,
 						)
 					),
 				};
 			} catch {
 				return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
 			}
+		}
+
+		// Handle $ prefix - command autocomplete
+		if (type === "$") {
+			if (options.signal.aborted) return null;
+
+			const commands = this.getCommands().filter((c) => c.source === "prompt" || c.source === "skill");
+			if (commands.length === 0) {
+				return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
+			}
+
+			const items = buildCommandSuggestions(commands, rawQuery);
+			if (options.signal.aborted || items.length === 0) {
+				return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
+			}
+
+			return {
+				prefix: rawQuery,
+				items,
+			};
 		}
 
 		return this.baseProvider.getSuggestions(lines, cursorLine, cursorCol, options);
@@ -150,7 +172,10 @@ class FffAutocompleteProvider implements AutocompleteProvider {
 		item: AutocompleteItem,
 		prefix: string,
 	): { lines: string[]; cursorLine: number; cursorCol: number } {
-		void this.runtime.trackQuery(prefix, normalizeInsertedPath(item.value));
+		// Track file selections for @ prefix
+		if (prefix.startsWith("@")) {
+			void this.runtime.trackQuery(prefix, normalizeInsertedPath(item.value));
+		}
 		return this.baseProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
 	}
 
